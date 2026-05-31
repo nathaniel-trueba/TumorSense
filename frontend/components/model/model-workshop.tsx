@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { ChevronDown, ArrowUpRight, ImageIcon } from "lucide-react";
 import { FEATURES, type FeatureId } from "@/lib/breast-cancer/features";
@@ -11,6 +11,8 @@ import { FeatureSliders } from "./feature-sliders";
 import { PredictionCard } from "./prediction-card";
 import { ModelStats } from "./model-stats";
 import { ExplanationPanel } from "./explanation-panel";
+import { useBackendPrediction } from "@/hooks/use-prediction";
+import type { SVMPrediction } from "@/lib/breast-cancer/models";
 
 export function ModelWorkshop() {
   const [modelId, setModelId] = useState<KernelId>("rbf");
@@ -18,15 +20,25 @@ export function ModelWorkshop() {
   const [xFeature, setXFeature] = useState<FeatureId>("radius_mean");
   const [yFeature, setYFeature] = useState<FeatureId>("concave_points_mean");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [prediction, setPrediction] = useState<SVMPrediction>(() =>
+    MODEL_INDEX["rbf"].predict(getDefaultInput())
+  );
 
-  // Defer mount-dependent things to avoid SSR mismatch.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  useEffect(() => { setMounted(true); }, []);
 
   const model = MODEL_INDEX[modelId];
-  const prediction = useMemo(() => model.predict(values), [model, values]);
+  const { predict, loading, error } = useBackendPrediction();
+
+  const fetchPrediction = useCallback(async (kernel: KernelId, vals: number[]) => {
+    const result = await predict(kernel, vals);
+    if (result) setPrediction(result);
+    else setPrediction(MODEL_INDEX[kernel].predict(vals));
+  }, [predict]);
+
+  useEffect(() => {
+    fetchPrediction(modelId, values);
+  }, [modelId, values]);
 
   function updateFeature(idx: number, value: number) {
     setValues((prev) => {
@@ -36,17 +48,9 @@ export function ModelWorkshop() {
     });
   }
 
-  function resetNeutral() {
-    setValues(getDefaultInput());
-  }
-
-  function useBenignMean() {
-    setValues(FEATURES.map((f) => f.benignMean));
-  }
-
-  function useMalignantMean() {
-    setValues(FEATURES.map((f) => f.malignantMean));
-  }
+  function resetNeutral() { setValues(getDefaultInput()); }
+  function useBenignMean() { setValues(FEATURES.map((f) => f.benignMean)); }
+  function useMalignantMean() { setValues(FEATURES.map((f) => f.malignantMean)); }
 
   function randomize() {
     setValues(
@@ -61,7 +65,6 @@ export function ModelWorkshop() {
 
   function selectAxis(setter: (f: FeatureId) => void, other: FeatureId) {
     return (next: FeatureId) => {
-      // Don't allow both axes to be the same feature.
       if (next === other) return;
       setter(next);
     };
@@ -114,14 +117,9 @@ export function ModelWorkshop() {
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => {
-                      setModelId(m.id);
-                      setPickerOpen(false);
-                    }}
+                    onClick={() => { setModelId(m.id); setPickerOpen(false); }}
                     className={`w-full text-left px-5 py-4 border-b border-foreground/10 last:border-b-0 transition-colors ${
-                      m.id === modelId
-                        ? "bg-foreground/[0.04]"
-                        : "hover:bg-foreground/[0.02]"
+                      m.id === modelId ? "bg-foreground/[0.04]" : "hover:bg-foreground/[0.02]"
                     }`}
                   >
                     <div className="flex items-baseline justify-between gap-3">
@@ -144,11 +142,20 @@ export function ModelWorkshop() {
           your prediction, and the surrounding region update live. Pick any two features
           as visualisation axes — the remaining eight are held at the slider values.
         </p>
+        {loading && (
+          <p className="text-xs font-mono text-muted-foreground animate-pulse">
+            Running inference...
+          </p>
+        )}
+        {error && (
+          <p className="text-xs font-mono text-yellow-500">
+            ⚠ Backend unavailable — showing local prediction
+          </p>
+        )}
       </div>
 
       {/* Main interaction surface */}
       <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-10 lg:gap-14">
-        {/* Sliders */}
         <div className="lg:sticky lg:top-28 self-start space-y-6">
           <div className="flex items-baseline justify-between">
             <h2 className="font-display text-2xl">Features</h2>
@@ -166,7 +173,6 @@ export function ModelWorkshop() {
           />
         </div>
 
-        {/* Visualization */}
         <div className="space-y-8">
           <div className="space-y-2">
             <h2 className="font-display text-2xl">Decision boundary</h2>
@@ -186,12 +192,10 @@ export function ModelWorkshop() {
           ) : (
             <div className="h-[420px] border border-foreground/10 animate-pulse bg-foreground/[0.02]" />
           )}
-
           <PredictionCard model={model} prediction={prediction} values={values} />
         </div>
       </div>
 
-      {/* Stats */}
       <div className="space-y-6">
         <div className="flex items-baseline justify-between gap-4 flex-wrap">
           <h2 className="font-display text-3xl lg:text-5xl tracking-tight">Model-specific stats</h2>
@@ -202,7 +206,6 @@ export function ModelWorkshop() {
         <ModelStats model={model} prediction={prediction} />
       </div>
 
-      {/* Explanation / RAG */}
       <div className="space-y-6">
         <div className="flex items-baseline justify-between gap-4 flex-wrap">
           <h2 className="font-display text-3xl lg:text-5xl tracking-tight">Explainability</h2>
@@ -213,12 +216,11 @@ export function ModelWorkshop() {
         <ExplanationPanel model={model} prediction={prediction} values={values} />
       </div>
 
-      {/* Active feature snapshot */}
       <div className="border border-foreground/10 p-6 lg:p-8">
         <div className="flex items-baseline justify-between mb-6">
           <h3 className="font-display text-2xl">Input snapshot</h3>
           <span className="text-xs font-mono text-muted-foreground">
-            JSON · ready to send to /api/predict (when wired up)
+            JSON · live request to /api/predict
           </span>
         </div>
         <pre className="text-xs font-mono overflow-x-auto leading-relaxed text-foreground/80">
@@ -226,9 +228,7 @@ export function ModelWorkshop() {
             {
               model: model.id,
               kernel: model.kernel,
-              features: Object.fromEntries(
-                FEATURES.map((f, i) => [f.id, values[i]])
-              ),
+              features: Object.fromEntries(FEATURES.map((f, i) => [f.id, values[i]])),
               prediction: {
                 label: prediction.label,
                 probability_malignant: +prediction.probability.toFixed(4),
