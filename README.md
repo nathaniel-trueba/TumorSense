@@ -2,6 +2,10 @@
 
 Tumor Sense is an end-to-end SVM classification pipeline built on the Wisconsin Breast Cancer Diagnostic dataset. It reduces 30 raw cell nucleus measurements down to the 10 most predictive features and achieves high discriminatory performance providing a reliable, data-driven second opinion for ambiguous fine needle aspiration (FNA) cases.
 
+### 🔗 Live Demo
+
+[**View Tumorsense Website →**](https://tumorsense-ntrueba-5031s-projects.vercel.app)
+
 ---
 ### Why not just use tumor size?
 
