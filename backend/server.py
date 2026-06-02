@@ -109,7 +109,10 @@ def get_rag() -> RagPipeline:
 @app.on_event("startup")
 async def _eager_warm_svm() -> None:
     # SVM startup is cheap (joblib). Image + RAG stay lazy.
-    get_svm()
+    try:
+        get_svm()
+    except Exception as exc:
+        print(f"[server] WARNING: SVM models failed to load — SVM endpoints will be unavailable: {exc}")
 
 
 # ─── Meta ─────────────────────────────────────────────────────────────────────

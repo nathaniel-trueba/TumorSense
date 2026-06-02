@@ -98,7 +98,7 @@ def main() -> int:
     missing: list[tuple[str, dict]] = []
     for fname, meta in files.items():
         dest = MODELS_DIR / fname
-        if dest.exists() and dest.stat().st_size > 0:
+        if dest.exists():
             continue
         missing.append((fname, meta))
 

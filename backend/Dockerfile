@@ -31,6 +31,7 @@ RUN pip install --upgrade pip \
 
 # Copy the backend package (server + svm + image_models + rag + docs + scripts).
 COPY . .
+COPY models/ ./models/
 
 # Pre-download embedding model so cold start doesn't pay the 90 MB hit on the
 # first /api/explain call. Comment out to keep the image small.
