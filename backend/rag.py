@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .schemas import (
+from schemas import (
     ExplainRequest,
     ExplainResponse,
     RetrievedPassage,

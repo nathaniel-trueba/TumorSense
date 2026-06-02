@@ -18,7 +18,7 @@ from typing import Iterable
 import joblib
 import numpy as np
 
-from .schemas import (
+from schemas import (
     FEATURE_NAMES,
     KernelLiteral,
     SVMMeta,
