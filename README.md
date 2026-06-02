@@ -2,6 +2,10 @@
 
 Tumor Sense is an end-to-end SVM classification pipeline built on the Wisconsin Breast Cancer Diagnostic dataset. It reduces 30 raw cell nucleus measurements down to the 10 most predictive features and achieves high discriminatory performance providing a reliable, data-driven second opinion for ambiguous fine needle aspiration (FNA) cases.
 
+### 🔗 Live Demo
+
+[**View Tumorsense Website →**](https://tumorsense-ntrueba-5031s-projects.vercel.app)
+
 ---
 ### Why not just use tumor size?
 
@@ -37,9 +41,10 @@ A false negative (calling a malignant tumor benign) is a life-threatening error.
 ![Top 10 Selected Features](visuals/rfe_feature_rankings.png)
 
 ### 3. Model Training
-- **Algorithm:** Support Vector Machine with RBF kernel
+- **Algorithm:** Support Vector Machine with 4 kernels: **RBF, Linear, Polynomial (degree 3), and Sigmoid**
 - **Hyperparameter tuning:** `GridSearchCV` over `C` and `gamma`
 - Best parameters selected via cross-validated grid search
+- All 4 models serialized and served live via a Flask API (`/api/predict`)
 
 ### 4. Evaluation
 - Precision, Recall, F1 per class
@@ -59,23 +64,46 @@ A false negative (calling a malignant tumor benign) is a life-threatening error.
 ![NumPy](https://img.shields.io/badge/NumPy-1.26-013243?style=flat&logo=numpy&logoColor=white)
 ![Matplotlib](https://img.shields.io/badge/Matplotlib-3.8-11557C?style=flat)
 ![SHAP](https://img.shields.io/badge/SHAP-explainability-FF6B6B?style=flat)
-
+![Flask](https://img.shields.io/badge/Flask-3.0-000000?style=flat&logo=flask&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?style=flat&logo=next.js&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react&logoColor=black)
+![Vercel](https://img.shields.io/badge/Vercel-deployed-000000?style=flat&logo=vercel&logoColor=white)
+![Railway](https://img.shields.io/badge/Railway-deployed-0B0D0E?style=flat&logo=railway&logoColor=white)
 ---
 
 ## Repository Structure
 
 ```
-tumor-sense/
-├── data/
-│   └── wdbc.csv                  # Wisconsin Diagnostic Breast Cancer dataset
-├── notebook/
-│   └── tumor_sense.ipynb         # Full analysis and model pipeline
-├── models/
-│   └── svm_model.pkl             # Serialized trained model
+TumorSense/
+├── backend/
+│   ├── models/
+│   │   ├── model_rbf.joblib
+│   │   ├── model_linear.joblib
+│   │   ├── model_poly.joblib
+│   │   ├── model_sigmoid.joblib
+│   │   ├── scaler.joblib
+│   │   └── metrics.json
+│   ├── server.py
+│   ├── train_models.py
+│   ├── requirements.txt
+│   └── Procfile
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── hooks/
+│   ├── lib/
+│   ├── public/
+│   ├── styles/
+│   ├── next.config.mjs
+│   ├── package.json
+│   └── tsconfig.json
+├── notebooks/
+│   └── tumor_sense.ipynb
 ├── visuals/
-│   ├── misclass.png              # misclassification zone visualization
-│   ├── rfe_feature_rankings.png  # RFE features ranked
-│   └── shap.png                  # SHAP feature importance plot
+│   ├── misclass.png
+│   ├── rfe_feature_rankings.png
+│   └── shap.png
+├── LICENSE
 └── README.md
 ```
 
@@ -83,16 +111,34 @@ tumor-sense/
 
 ## Getting Started
 
+### Try it live
+Visit the deployed app: [tumorsense-ntrueba-5031s-projects.vercel.app](https://tumorsense-ntrueba-5031s-projects.vercel.app)
+
+### Run locally
+
+#### Backend
 ```bash
-# Clone the repo
-git clone https://github.com/nathaniel-trueba/tumor-sense.git
-cd tumor-sense
+git clone https://github.com/nathaniel-trueba/TumorSense.git
+cd TumorSense/backend
 
-# Install dependencies
 pip install -r requirements.txt
+python server.py
+```
 
-# Launch the notebook
-jupyter notebook notebook/tumor_sense.ipynb
+#### Frontend
+```bash
+cd TumorSense/frontend
+
+npm install
+npm run dev
+```
+
+#### Notebook
+```bash
+cd TumorSense
+
+pip install -r backend/requirements.txt
+jupyter notebook notebooks/tumor_sense.ipynb
 ```
 
 ---
