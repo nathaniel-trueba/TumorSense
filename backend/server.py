@@ -29,9 +29,9 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from .image_models import ImageInferer, WEIGHT_FILES
-from .rag import RagPipeline
-from .schemas import (
+from image_models import ImageInferer, WEIGHT_FILES
+from rag import RagPipeline
+from schemas import (
     ExplainRequest,
     ExplainResponse,
     FEATURE_NAMES,
@@ -44,7 +44,7 @@ from .schemas import (
     SVMPredictRequest,
     SVMPredictResponse,
 )
-from .svm import KERNELS, SVMRegistry
+from svm import KERNELS, SVMRegistry
 
 BACKEND_DIR = Path(__file__).parent
 SVM_METRICS_PATH = BACKEND_DIR / "outputs" / "svm_out" / "metrics.json"
