@@ -1,142 +1,221 @@
-"""
-Endpoints:
-  POST /api/predict          run inference with a chosen kernel model
-  GET  /api/models           list kernels
-  GET  /api/metrics          return training/test metrics
-  GET  /api/feature-names    return 10 feature names
-  GET  /health               simple health-check because claude said so
+"""Tumor Sense — FastAPI server.
 
-Expected request body for /api/predict:
-{
-  "model": "rbf",          // rbf | linear | poly | sigmoid
-  "kernel": "rbf",         // same value (kept for API compatibility)
-  "features": {
-    "radius_mean": 14.85,
-    "texture_mean": 19.75,
-    "perimeter_mean": 96.75,
-    "area_mean": 720.6,
-    "smoothness_mean": 0.0977,
-    "compactness_mean": 0.11265,
-    "concavity_mean": 0.10305,
-    "concave_points_mean": 0.056850,
-    "symmetry_mean": 0.1835,
-    "fractal_dimension_mean": 0.0628
-  }
-}
+Endpoints:
+
+  GET  /health                  service status + which backends are loaded
+  GET  /api/models              list trained SVM kernels
+  GET  /api/feature-names       the 10 'mean' features the workshop exposes
+  GET  /api/metrics             training / test metrics from outputs/svm_out
+  POST /api/predict             SVM inference (Pydantic-validated)
+
+  GET  /api/image/models        list image-classification architectures
+  POST /api/image/predict       image inference (base64 body)
+  POST /api/image/predict-file  image inference (multipart upload)
+
+  POST /api/explain             RAG-grounded explanation of a prediction
+
+Run with:
+
+    cd backend
+    uvicorn server:app --reload --port 8000
 """
+
+from __future__ import annotations
 
 import json
 import os
-import time
+from pathlib import Path
 
-import joblib
-import numpy as np
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
-app = Flask(__name__)
-CORS(app)
+from .image_models import ImageInferer, WEIGHT_FILES
+from .rag import RagPipeline
+from .schemas import (
+    ExplainRequest,
+    ExplainResponse,
+    FEATURE_NAMES,
+    HealthResponse,
+    ImageModelInfo,
+    ImageModelLiteral,
+    ImagePredictRequest,
+    ImagePredictResponse,
+    KernelLiteral,
+    SVMPredictRequest,
+    SVMPredictResponse,
+)
+from .svm import KERNELS, SVMRegistry
 
-MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
-
-scaler  = joblib.load(os.path.join(MODELS_DIR, "scaler.joblib"))
-bundles = {}
-for kernel in ("rbf", "linear", "poly", "sigmoid"):
-    path = os.path.join(MODELS_DIR, f"model_{kernel}.joblib")
-    bundles[kernel] = joblib.load(path)
-
-with open(os.path.join(MODELS_DIR, "metrics.json")) as f:
-    METRICS = json.load(f)
+BACKEND_DIR = Path(__file__).parent
+SVM_METRICS_PATH = BACKEND_DIR / "outputs" / "svm_out" / "metrics.json"
 
 
-FEATURE_NAMES = bundles["rbf"]["feature_names"][:10]
+# ─── App + middleware ─────────────────────────────────────────────────────────
 
-print(f"Loaded {len(bundles)} models | features expected: {len(FEATURE_NAMES)}")
+app = FastAPI(
+    title="Tumor Sense API",
+    version="0.2.0",
+    description=(
+        "FastAPI server backing the Tumor Sense workshop. Serves SVM "
+        "predictions, image-classification predictions, and a LangChain "
+        "RAG-grounded explanation endpoint."
+    ),
+)
 
-def _extract_features(features_dict: dict) -> np.ndarray:
-    full = bundles["rbf"]["feature_names"]
-    row  = np.zeros(len(full))
-    for i, name in enumerate(full):
-        if name in features_dict:
-            row[i] = float(features_dict[name])
-    return row.reshape(1, -1)
+# CORS configurable via env so production deployments can lock it down.
+_origins = os.environ.get("TUMORSENSE_CORS_ORIGINS", "*")
+origins = [o.strip() for o in _origins.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins or ["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
-@app.get("/health")
-def health():
-    return jsonify({"status": "ok", "models_loaded": list(bundles.keys())})
+
+# ─── Lazy singletons ──────────────────────────────────────────────────────────
+
+_svm: SVMRegistry | None = None
+_image: ImageInferer | None = None
+_rag: RagPipeline | None = None
+
+
+def get_svm() -> SVMRegistry:
+    global _svm
+    if _svm is None:
+        _svm = SVMRegistry()
+        print(
+            f"[server] svm registry ready: {len(_svm.bundles)} kernels "
+            f"({', '.join(_svm.loaded_kernels())})"
+        )
+    return _svm
+
+
+def get_image() -> ImageInferer:
+    global _image
+    if _image is None:
+        _image = ImageInferer()
+    return _image
+
+
+def get_rag() -> RagPipeline:
+    global _rag
+    if _rag is None:
+        _rag = RagPipeline()
+    return _rag
+
+
+@app.on_event("startup")
+async def _eager_warm_svm() -> None:
+    # SVM startup is cheap (joblib). Image + RAG stay lazy.
+    get_svm()
+
+
+# ─── Meta ─────────────────────────────────────────────────────────────────────
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health() -> HealthResponse:
+    svm = get_svm()
+    img = get_image()
+    available_images: list[ImageModelLiteral] = []
+    for mid in WEIGHT_FILES:
+        if (img.models_dir / WEIGHT_FILES[mid]).exists():
+            available_images.append(mid)
+    return HealthResponse(
+        status="ok",
+        svm_models_loaded=svm.loaded_kernels(),
+        image_models_available=available_images,
+        rag_ready=get_rag().ready,
+    )
+
+
+# ─── SVM ──────────────────────────────────────────────────────────────────────
 
 
 @app.get("/api/models")
-def list_models():
-    return jsonify({"available_kernels": list(bundles.keys())})
+async def list_models() -> dict[str, list[KernelLiteral]]:
+    return {"available_kernels": list(KERNELS)}
 
 
 @app.get("/api/feature-names")
-def feature_names():
-    return jsonify({"feature_names": FEATURE_NAMES})
+async def feature_names() -> dict[str, list[str]]:
+    return {"feature_names": list(FEATURE_NAMES)}
 
 
 @app.get("/api/metrics")
-def metrics():
-    return jsonify(METRICS)
+async def metrics() -> dict:
+    if not SVM_METRICS_PATH.exists():
+        raise HTTPException(status_code=404, detail=f"metrics file not found at {SVM_METRICS_PATH}")
+    with open(SVM_METRICS_PATH) as f:
+        return json.load(f)
 
 
-@app.post("/api/predict")
-def predict():
-    body = request.get_json(force=True, silent=True)
-    if not body:
-        return jsonify({"error": "Request body must be JSON"}), 400
-
-    kernel = (body.get("model") or body.get("kernel") or "rbf").lower()
-    if kernel not in bundles:
-        return jsonify({
-            "error": f"Unknown kernel '{kernel}'. Choose from: {list(bundles.keys())}"
-        }), 400
-
-    features_dict = body.get("features")
-    if not features_dict or not isinstance(features_dict, dict):
-        return jsonify({"error": "'features' object is required"}), 400
-
-    missing = [f for f in FEATURE_NAMES if f not in features_dict]
-    if missing:
-        return jsonify({"error": f"Missing features: {missing}"}), 400
-
+@app.post("/api/predict", response_model=SVMPredictResponse)
+async def predict(req: SVMPredictRequest) -> SVMPredictResponse:
     try:
-        t0    = time.perf_counter()
-        X_raw = _extract_features(features_dict)
-        X_s   = scaler.transform(X_raw)
+        return get_svm().predict(req)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"inference failed: {e}") from e
 
-        bundle  = bundles[kernel]
-        model   = bundle["model"]
-        t_names = bundle["target_names"]
 
-        label_idx          = int(model.predict(X_s)[0])
-        proba              = model.predict_proba(X_s)[0]
-        prob_malignant     = float(proba[0])
-        prob_benign        = float(proba[1])
-        decision           = float(model.decision_function(X_s)[0])
-        label              = t_names[label_idx]
-        confidence         = float(proba[label_idx])
-        latency_ms         = round((time.perf_counter() - t0) * 1000, 2)
+# ─── Image classification ────────────────────────────────────────────────────
 
-    except Exception as exc:
-        return jsonify({"error": f"Inference failed: {exc}"}), 500
 
-    return jsonify({
-        "model":  kernel,
-        "kernel": kernel,
-        "features": features_dict,
-        "prediction": {
-            "label":               label,
-            "probability_malignant": round(prob_malignant, 4),
-            "confidence":          round(confidence, 4),
-            "decision":            round(decision, 4),
-        },
-        "meta": {
-            "latency_ms": latency_ms,
-            "scaler":     "StandardScaler",
-        }
-    })
+@app.get("/api/image/models", response_model=list[ImageModelInfo])
+async def image_models() -> list[ImageModelInfo]:
+    return get_image().info()
+
+
+@app.post("/api/image/predict", response_model=ImagePredictResponse)
+async def image_predict(req: ImagePredictRequest) -> ImagePredictResponse:
+    try:
+        return get_image().predict(req)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"image inference failed: {e}") from e
+
+
+@app.post("/api/image/predict-file", response_model=ImagePredictResponse)
+async def image_predict_file(
+    file: UploadFile = File(...),
+    model: ImageModelLiteral = Form("resnet18"),
+) -> ImagePredictResponse:
+    import base64
+
+    raw = await file.read()
+    req = ImagePredictRequest(model=model, image_base64=base64.b64encode(raw).decode("ascii"))
+    return await image_predict(req)
+
+
+# ─── RAG explanation ─────────────────────────────────────────────────────────
+
+
+@app.post("/api/explain", response_model=ExplainResponse)
+async def explain(req: ExplainRequest) -> ExplainResponse:
+    try:
+        return get_rag().explain(req)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"explanation failed: {e}") from e
+
+
+# ─── Local dev entrypoint ─────────────────────────────────────────────────────
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+    import uvicorn
+
+    uvicorn.run(
+        "backend.server:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 8000)),
+        reload=bool(int(os.environ.get("RELOAD", "1"))),
+    )
