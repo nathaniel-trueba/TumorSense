@@ -12,7 +12,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     TRANSFORMERS_VERBOSITY=error \
     HF_HUB_DISABLE_TELEMETRY=1 \
-    TUMORSENSE_MODELS_DIR=/app/backend/models
+    TUMORSENSE_MODELS_DIR=/app/models
 
 # System deps needed by faiss-cpu, Pillow, and some torch ops.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -25,12 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install dependencies first to keep the layer cache useful between code edits.
-COPY backend/requirements.txt ./backend/requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN pip install --upgrade pip \
- && pip install -r backend/requirements.txt
+ && pip install -r requirements.txt
 
 # Copy the backend package (server + svm + image_models + rag + docs + scripts).
-COPY backend/ ./backend/
+COPY . .
 
 # Pre-download embedding model so cold start doesn't pay the 90 MB hit on the
 # first /api/explain call. Comment out to keep the image small.
@@ -40,4 +40,4 @@ SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
 EXPOSE 8000
 
 # Render expects the service to bind to $PORT; default to 8000 for local docker.
-CMD ["sh", "-c", "python backend/scripts/download_weights.py && uvicorn backend.server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+CMD ["sh", "-c", "python scripts/download_weights.py && uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
