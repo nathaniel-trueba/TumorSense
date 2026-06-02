@@ -174,8 +174,8 @@ async def image_models() -> list[ImageModelInfo]:
 async def image_predict(req: ImagePredictRequest) -> ImagePredictResponse:
     try:
         return get_image().predict(req)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
+    except (FileNotFoundError, ImportError) as e:
+        raise HTTPException(status_code=503, detail="Image model weights not available") from e
     except (ValueError, KeyError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:  # pragma: no cover

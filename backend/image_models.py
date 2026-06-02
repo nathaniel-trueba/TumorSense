@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from .schemas import (
+from schemas import (
     ImageLabelLiteral,
     ImageModelInfo,
     ImageModelLiteral,
