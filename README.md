@@ -4,7 +4,7 @@ Tumor Sense is an end-to-end SVM classification pipeline built on the Wisconsin 
 
 ### 🔗 Live Demo
 
-[**View Tumorsense Website →**](https://tumorsense-ntrueba-5031s-projects.vercel.app)
+[**View Tumorsense Website →**](https://tumorsense-production.up.railway.app/)
 
 ---
 ### Why not just use tumor size?
