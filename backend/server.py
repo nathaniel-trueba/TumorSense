@@ -29,9 +29,9 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from image_models import ImageInferer, WEIGHT_FILES
-from rag import RagPipeline
-from schemas import (
+from .image_models import ImageInferer, WEIGHT_FILES
+from .rag import RagPipeline
+from .schemas import (
     ExplainRequest,
     ExplainResponse,
     FEATURE_NAMES,
@@ -44,7 +44,7 @@ from schemas import (
     SVMPredictRequest,
     SVMPredictResponse,
 )
-from svm import KERNELS, SVMRegistry
+from .svm import KERNELS, SVMRegistry
 
 BACKEND_DIR = Path(__file__).parent
 SVM_METRICS_PATH = BACKEND_DIR / "outputs" / "svm_out" / "metrics.json"
@@ -109,10 +109,7 @@ def get_rag() -> RagPipeline:
 @app.on_event("startup")
 async def _eager_warm_svm() -> None:
     # SVM startup is cheap (joblib). Image + RAG stay lazy.
-    try:
-        get_svm()
-    except Exception as exc:
-        print(f"[server] WARNING: SVM models failed to load — SVM endpoints will be unavailable: {exc}")
+    get_svm()
 
 
 # ─── Meta ─────────────────────────────────────────────────────────────────────
@@ -177,8 +174,8 @@ async def image_models() -> list[ImageModelInfo]:
 async def image_predict(req: ImagePredictRequest) -> ImagePredictResponse:
     try:
         return get_image().predict(req)
-    except (FileNotFoundError, ImportError) as e:
-        raise HTTPException(status_code=503, detail="Image model weights not available") from e
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except (ValueError, KeyError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:  # pragma: no cover

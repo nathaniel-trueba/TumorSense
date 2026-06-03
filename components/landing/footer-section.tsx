@@ -10,13 +10,14 @@ const footerLinks = {
     { name: "Analysis", href: "/research#analysis" },
     { name: "Model", href: "/model" },
     { name: "Images", href: "/model-2" },
+    { name: "API", href: "/api-docs" },
     { name: "Results", href: "/#results" },
   ],
   LinkedIn: [
-    { name: "Nathaniel Trueba", href: "https://www.linkedin.com/in/trueba-nathaniel", target: "_blank" },
-    { name: "Kavya Shah", href: "https://www.linkedin.com/in/kavyashah3008", target: "_blank" },
-    { name: "Steven Ngo", href: "https://www.linkedin.com/in/stevenvngo", target: "_blank" },
-    { name: "Evan Park", href: "https://www.linkedin.com/in/evan-park-7570a1372", target: "_blank" },
+    { name: "Nathaniel Trueba", href: "#developers" },
+    { name: "Kavya Shah", href: "#" },
+    { name: "Steven Ngo", href: "#developers" },
+    { name: "Evan Park", href: "#" },
   ],
   DS3: [
     { name: "Website", href: "https://www.ds3atucsd.com" },
@@ -79,8 +80,6 @@ export function FooterSection() {
                     <li key={link.name}>
                       <a
                         href={link.href}
-                        target={"target" in link ? link.target : undefined}
-                        rel={"target" in link ? "noopener noreferrer" : undefined}
                         className="text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-2"
                       >
                         {link.name}
