@@ -24,6 +24,10 @@ export const metadata: Metadata = {
   title: 'Tumor Sense — Breast Tumor Classification Model',
   description: 'An interactive SVM-powered breast tumor classification model with research-backed visualizations and explainable predictions.',
   generator: 'v0.app',
+  icons: {
+    icon: '/ribbon.png',
+    apple: '/ribbon.png',
+  },
 }
 
 export default function RootLayout({
